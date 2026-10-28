@@ -1,0 +1,103 @@
+#!/usr/bin/env node
+// Draws ASCII sharks behind new chats in the T3 Code desktop app on macOS,
+// without changing the signed app, so its own updates keep working. Run by the
+// launchd agent that install.sh sets up.
+//
+// The app only accepts outside scripts when it starts with a debugging port.
+// When T3 starts without one (from the Dock, at login, or after an update
+// restarts it), this quits it within its first seconds and opens it again with
+// the port. A T3 that has been running longer is left alone until its next
+// start. With the port open, the page script in ../assets is added to every T3
+// window, and Chromium adds it again after each reload.
+//
+// The port listens on 127.0.0.1 only.
+import { execFileSync, spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { setTimeout as sleep } from "node:timers/promises";
+
+const app = process.env.T3_SHARKS_APP ?? "/Applications/T3 Code (Nightly).app";
+const binary = `${app}/Contents/MacOS/${execFileSync("/usr/bin/defaults", ["read", `${app}/Contents/Info`, "CFBundleExecutable"], { encoding: "utf8" }).trim()}`;
+const port = Number(process.env.T3_SHARKS_PORT ?? 9338);
+const portFlag = `--remote-debugging-port=${port}`;
+const freshSeconds = 30;
+const assets = new URL("../assets/", import.meta.url);
+const relaunchCommand = process.env.T3_SHARKS_RELAUNCH;
+
+const log = (message) => console.log(`${new Date().toISOString()} ${message}`);
+
+function ageSeconds(etime) {
+  const [days, clock] = etime.includes("-") ? etime.split("-") : ["0", etime];
+  return clock.split(":").map(Number).reduce((total, part) => total * 60 + part, 0) + Number(days) * 86400;
+}
+
+function t3Mains() {
+  const rows = execFileSync("ps", ["-axww", "-o", "pid=,etime=,command="], { encoding: "utf8" }).split("\n");
+  return rows.flatMap((row) => {
+    const match = row.trim().match(/^(\d+)\s+(\S+)\s+(.*)$/);
+    if (!match || !match[3].startsWith(binary)) return [];
+    const args = match[3].slice(binary.length);
+    if (/--type=|--require /.test(args)) return [];
+    return [{ pid: Number(match[1]), age: ageSeconds(match[2]), hasPort: args.includes(portFlag) }];
+  });
+}
+
+async function relaunch(pid) {
+  log(`T3 ${pid} started without the debugging port; reopening it with the port`);
+  process.kill(pid, "SIGTERM");
+  for (let i = 0; i < 60; i++) {
+    try { process.kill(pid, 0); } catch { break; }
+    await sleep(250);
+  }
+  const [command, ...args] = relaunchCommand
+    ? ["/bin/sh", "-c", relaunchCommand]
+    : ["/usr/bin/open", "-a", app, "--args", portFlag];
+  const { ELECTRON_RUN_AS_NODE, ...env } = process.env;
+  spawn(command, args, { detached: true, stdio: "ignore", env }).unref();
+}
+
+// Holds one connection to T3 until it quits. The sharks script is registered
+// on every T3 window, so Chromium reruns it on each reload with no polling.
+async function watchT3() {
+  const { webSocketDebuggerUrl } = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json();
+  const script = ["ocean.js", "mount.js"].map((name) => readFileSync(new URL(name, assets), "utf8")).join("\n");
+  const socket = new WebSocket(webSocketDebuggerUrl);
+  const attached = new Set();
+  let nextId = 0;
+  const send = (method, params = {}, sessionId) => socket.send(JSON.stringify({ id: ++nextId, method, params, sessionId }));
+  socket.addEventListener("open", () => send("Target.setDiscoverTargets", { discover: true }));
+  socket.addEventListener("message", (event) => {
+    const { method, params, sessionId } = JSON.parse(event.data);
+    if (method === "Target.attachedToTarget") {
+      send("Page.enable", {}, params.sessionId);
+      send("Page.addScriptToEvaluateOnNewDocument", { source: script }, params.sessionId);
+      send("Runtime.evaluate", { expression: script }, params.sessionId);
+      log(`added sharks to ${params.targetInfo.url}`);
+    }
+    const info = params?.targetInfo;
+    if (sessionId || !info || !/^Target\.target(Created|InfoChanged)$/.test(method)) return;
+    if (info.type === "page" && info.url.startsWith("t3code://") && !attached.has(info.targetId)) {
+      attached.add(info.targetId);
+      send("Target.attachToTarget", { targetId: info.targetId, flatten: true });
+    }
+  });
+  await new Promise((resolve) => {
+    socket.addEventListener("close", resolve);
+    socket.addEventListener("error", resolve);
+  });
+}
+
+const reopened = new Set();
+for (;;) {
+  try {
+    for (const main of t3Mains()) {
+      if (main.hasPort) await watchT3();
+      else if (main.age < freshSeconds && !reopened.has(main.pid)) {
+        reopened.add(main.pid);
+        await relaunch(main.pid);
+      }
+    }
+  } catch (error) {
+    if (!/ECONNREFUSED|fetch failed/.test(String(error.cause ?? error))) log(`error: ${error.message}`);
+  }
+  await sleep(5000);
+}

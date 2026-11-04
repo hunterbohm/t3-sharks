@@ -1,0 +1,75 @@
+<!doctype html>
+<html class="dark">
+<head>
+<meta charset="utf-8">
+<!-- Reproduces only the T3 Code markup and layout that assets/mount.js reads. -->
+<style>
+  :root { --background: #fcfcfc; --foreground: #111; --card: #eee; --border: #999; --chat-content-max-width: 736px; }
+  .dark { --background: #000; --foreground: #eee; --card: #111; --border: #444; }
+  html, body, #root { height: 100%; margin: 0; }
+  #root { display: flex; }
+  #side { width: 240px; flex: none; background: var(--card); }
+  #pane { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+  #slot { position: relative; flex: 1; min-height: 0; display: flex; }
+  .bg-background { background-color: var(--background); }
+  [data-chat-canvas] { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  #timeline-wrap { position: relative; flex: 1; min-height: 0; }
+  #scroll { height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable both-edges; }
+  [data-timeline-root] { width: 100%; max-width: var(--chat-content-max-width); margin: 0 auto; padding: 24px 0; color: var(--foreground); }
+  #overlay { position: absolute; left: 0; right: 0; bottom: 0; pointer-events: none; }
+  [data-chat-composer-stack] { pointer-events: auto; position: relative; z-index: 10; margin: 0 auto; width: 100%; max-width: var(--chat-content-max-width); }
+  [data-chat-composer-stack] h1 { display: none; }
+  [data-chat-width=full] { --chat-content-max-width: none; }
+  #composer { box-sizing: border-box; display: block; width: 100%; height: 96px; background: var(--card); color: var(--foreground); }
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="side"></div>
+  <div id="pane" class="bg-background">
+    <header class="bg-background" style="height:44px;flex:none">Fixture thread</header>
+    <div id="slot"></div>
+  </div>
+</div>
+<template id="thread">
+  <div data-chat-canvas="true">
+    <div id="timeline-wrap" class="bg-background">
+      <div id="scroll">
+        <div data-timeline-root="true">
+          <p id="msg">Fixture assistant message wide enough to reach both edges of the reading column.</p>
+          <pre id="code" class="bg-background">const margin = column.left - box.left;</pre>
+          <button id="copy">Copy</button>
+          <p style="height:1500px">Long content so the timeline scrolls.</p>
+        </div>
+      </div>
+    </div>
+    <div id="overlay">
+      <div data-chat-composer-stack="true">
+        <h1>Fixture heading</h1>
+        <div class="group/composer-surface"><textarea id="composer">Draft</textarea></div>
+      </div>
+    </div>
+  </div>
+</template>
+<script>
+  window.__fix = {
+    clicks: 0,
+    engines: [],
+    mountHost() {
+      const slot = document.getElementById('slot');
+      slot.replaceChildren(document.getElementById('thread').content.cloneNode(true));
+      document.getElementById('copy').addEventListener('click', () => window.__fix.clicks++);
+    },
+  };
+  window.__fix.mountHost();
+</script>
+<script src="/ocean.js"></script>
+<script>
+  const Base = window.__T3SharksOcean;
+  window.__T3SharksOcean = class extends Base {
+    constructor(...args) { super(...args); __fix.engines.push(this); }
+    destroy() { __fix.engines = __fix.engines.filter((engine) => engine !== this); super.destroy(); }
+  };
+</script>
+</body>
+</html>

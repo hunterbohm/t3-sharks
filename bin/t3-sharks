@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Draws ASCII sharks behind new chats in the T3 Code desktop app on macOS,
+// Draws ASCII sharks behind new chats and beside open chats in the T3 Code desktop app on macOS,
 // without changing the signed app, so its own updates keep working. Run by the
 // launchd agent that install.sh sets up.
 //
@@ -15,15 +15,24 @@ import { execFileSync, spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 
-const app = process.env.T3_SHARKS_APP ?? "/Applications/T3 Code (Nightly).app";
-const binary = `${app}/Contents/MacOS/${execFileSync("/usr/bin/defaults", ["read", `${app}/Contents/Info`, "CFBundleExecutable"], { encoding: "utf8" }).trim()}`;
+const log = (message) => console.log(`${new Date().toISOString()} ${message}`);
+
+const app = process.env.T3_SHARKS_APP;
+function readBinary() {
+  try {
+    return `${app}/Contents/MacOS/${execFileSync("/usr/bin/defaults", ["read", `${app}/Contents/Info`, "CFBundleExecutable"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim()}`;
+  } catch {
+    log(`No T3 Code app at "${app ?? ""}". Run install.sh again, or run: T3_APP="/path/to/T3 Code.app" ./install.sh`);
+    // A successful exit keeps launchd from restarting a helper that has nothing to follow.
+    process.exit(0);
+  }
+}
+const binary = readBinary();
 const port = Number(process.env.T3_SHARKS_PORT ?? 9338);
 const portFlag = `--remote-debugging-port=${port}`;
 const freshSeconds = 30;
 const assets = new URL("../assets/", import.meta.url);
 const relaunchCommand = process.env.T3_SHARKS_RELAUNCH;
-
-const log = (message) => console.log(`${new Date().toISOString()} ${message}`);
 
 function ageSeconds(etime) {
   const [days, clock] = etime.includes("-") ? etime.split("-") : ["0", etime];

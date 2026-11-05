@@ -16,7 +16,9 @@ const chrome = [
   "/usr/bin/chromium",
 ].find((path) => path && existsSync(path));
 
-const mount = readFileSync(join(repo, "assets/mount.js"), "utf8");
+const mountOnly = readFileSync(join(repo, "assets/mount.js"), "utf8");
+const withChat = (on) => `localStorage.setItem('t3-sharks.chat', '${on ? 1 : 0}');\n${mountOnly}`;
+const mount = withChat(true);
 const legacyMount = readFileSync(join(repo, "tests/fixture/legacy-mount.js"), "utf8");
 const SYNC_MS = 500;
 const HOST_LEFT = 240;
@@ -174,6 +176,41 @@ describe("sharks in the page", { skip: chrome ? false : "no Chrome or Chromium f
       return [w.fish.length, pristine.fish.length];
     })`);
     for (const [live, stock] of fish) assert.ok(live >= stock / 2, `the sharks keep their unseen fish, got ${live} of ${stock}`);
+  });
+
+  test("chat sharks are off until the Labs switch turns them on, and new chats keep theirs", async () => {
+    await page.open(withChat(false), "#/env/thread-a");
+    let s = await state();
+    assert.deepEqual([s.mode, s.canvases, s.live], [null, 0, 0]);
+    await go("#/draft/four");
+    s = await state();
+    assert.deepEqual([s.mode, s.canvases, s.veils], ["landing", 1, 1]);
+    await go("#/env/thread-a");
+    const row = () => page.evaluate(`(() => {
+      const rows = document.querySelectorAll('#beta [data-t3-sharks-setting]');
+      const r = rows[0], sw = r?.querySelector('[role=switch]');
+      return { rows: rows.length, last: r === r?.parentElement.lastElementChild, title: r?.querySelector('h3').textContent, extras: r?.querySelectorAll('h3 ~ span, .reset').length,
+        checked: sw?.getAttribute('aria-checked'), on: sw?.hasAttribute('data-checked'), thumbOn: sw?.firstElementChild.hasAttribute('data-checked'), stored: localStorage.getItem('t3-sharks.chat'),
+        dupIds: [...document.querySelectorAll('[id]')].filter((el, _, all) => all.filter((o) => o.id === el.id).length > 1).length };
+    })()`);
+    assert.deepEqual(await row(), { rows: 1, last: true, title: "Sharks beside open chats", extras: 0, checked: "false", on: false, thumbOn: false, stored: "0", dupIds: 0 });
+    await click(await center("#beta [data-t3-sharks-setting] [role=switch]"));
+    await sleep(SYNC_MS);
+    assert.deepEqual(await row(), { rows: 1, last: true, title: "Sharks beside open chats", extras: 0, checked: "true", on: true, thumbOn: true, stored: "1", dupIds: 0 });
+    s = await state();
+    assert.deepEqual([s.mode, s.canvases, s.live], ["chat", 2, 2], "turning the switch on starts chat sharks without a reload");
+    await page.evaluate(`document.querySelector('#beta [data-t3-sharks-setting] [role=switch]').focus()`);
+    await page.cdp("Input.dispatchKeyEvent", { type: "keyDown", key: " ", code: "Space", windowsVirtualKeyCode: 32 });
+    await page.cdp("Input.dispatchKeyEvent", { type: "keyUp", key: " ", code: "Space", windowsVirtualKeyCode: 32 });
+    await sleep(SYNC_MS);
+    assert.equal((await row()).checked, "false");
+    s = await state();
+    assert.deepEqual([s.mode, s.canvases, s.live], [null, 0, 0], "turning it off removes them");
+    await page.evaluate(`document.querySelector('#beta [data-slot=settings-group]').append(document.querySelector('#boring-sidebar'))`);
+    await sleep(SYNC_MS);
+    assert.equal((await row()).last, true, "the row stays last when T3 rerenders its own rows");
+    await page.evaluate(`window.__t3Sharks.destroy()`);
+    assert.equal((await row()).rows, 0, "removing the script removes the row");
   });
 
   test("margin sharks follow the same paths as an untouched engine world", async () => {
@@ -387,7 +424,7 @@ describe("sharks in the page", { skip: chrome ? false : "no Chrome or Chromium f
   });
 
   test("an update replaces the previous release's mount in a running window", async () => {
-    await page.open(legacyMount, "#/draft/three");
+    await page.open(`localStorage.setItem('t3-sharks.chat', '1');\n${legacyMount}`, "#/draft/three");
     assert.equal(await page.evaluate("typeof window.__t3Sharks"), "number");
     await page.cdp("Runtime.evaluate", { expression: mount });
     await sleep(SYNC_MS);

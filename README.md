@@ -1,6 +1,6 @@
 # t3-sharks
 
-ASCII sharks swimming in [T3 Code](https://github.com/pingdotgg/t3code), behind new chats and in the margins of open chats. The sharks are [stackedlol's ascii-sharks](https://github.com/stackedlol/ascii-sharks), drawn grey, with a soft blur behind the heading and message box on new chats.
+ASCII sharks swimming in [T3 Code](https://github.com/pingdotgg/t3code), behind new chats, and if you turn them on, in the margins of open chats. The sharks are [stackedlol's ascii-sharks](https://github.com/stackedlol/ascii-sharks), drawn grey, with a soft blur behind the heading and message box on new chats.
 
 T3 itself is never changed, so its normal updates, nightly included, keep working.
 
@@ -30,6 +30,10 @@ T3_APP="/Applications/T3 Code (Beta).app" ./t3-sharks/install.sh
 
 The helper follows one app at a time. Use the same command to switch between Nightly and Beta, then quit and reopen the new one.
 
+## Sharks beside open chats
+
+Off by default. Turn them on in T3 under Settings, Labs, Beta: **Sharks beside open chats**. The change applies right away, and T3 remembers it.
+
 ## Update
 
 ```sh
@@ -46,7 +50,7 @@ T3 only lets outside scripts into its window when it starts with a debugging por
 - With the port open, the helper adds the shark script to every T3 window. T3 keeps it across reloads, so the helper doesn't need to check again.
 - A T3 that has been open longer than 30 seconds is left alone until its next start.
 
-On the empty new chat screen, nothing changes and the sharks swim behind everything. In an open chat, each side margin gets its own ocean with the same physics, and only the sharks are drawn. Nothing swims behind the messages or the message box. If either margin is too narrow, or T3 uses full-width chats, open chats show no sharks. With reduced motion on, they hold still.
+On the empty new chat screen, nothing changes and the sharks swim behind everything. With sharks beside open chats turned on, each side margin of an open chat gets its own ocean with the same physics, and only the sharks are drawn. Nothing swims behind the messages or the message box. If either margin is too narrow, or T3 uses full-width chats, open chats show no sharks. With reduced motion on, they hold still.
 
 ## Good to know
 

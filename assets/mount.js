@@ -18,6 +18,55 @@
   const MARGIN_TO_START = 120, MARGIN_TO_KEEP = 96;
   // Each margin is a complete stock ocean with the engine's default sharks, so they hunt, turn and wander by its rules. One world across the pane would send them under the column and leave a margin empty.
 
+  // Sharks beside open chats are a Labs setting, off until turned on. T3 itself has no room for outside settings, so the row is drawn by this script and saved in the window's storage.
+  const CHAT_SETTING = 't3-sharks.chat';
+  const chatOn = () => {
+    try { return localStorage.getItem(CHAT_SETTING) === '1'; } catch { return false; }
+  };
+  const setSwitch = (control, on) => {
+    control.setAttribute('aria-checked', String(on));
+    for (const el of [control, ...control.querySelectorAll('[data-slot=switch-thumb]')]) {
+      el.toggleAttribute('data-checked', on);
+      el.toggleAttribute('data-unchecked', !on);
+      el.removeAttribute('data-mixed');
+    }
+  };
+  // The row copies a stock Labs row, so it matches T3's look without depending on its class names.
+  const labsRow = () => {
+    const group = document.querySelector('section#beta [data-slot=settings-group]');
+    if (!group) return;
+    let row = group.querySelector(':scope > [data-t3-sharks-setting]');
+    if (!row) {
+      const model = [...group.querySelectorAll(':scope > [data-slot=settings-row]')].find((r) => r.querySelector('[role=switch]'));
+      if (!model) return;
+      row = model.cloneNode(true);
+      row.id = 't3-sharks-chat';
+      row.setAttribute('data-t3-sharks-setting', '');
+      row.querySelectorAll('[id]').forEach((el) => el.removeAttribute('id'));
+      row.querySelector('h3').textContent = 'Sharks beside open chats';
+      row.querySelectorAll('h3 ~ span').forEach((el) => el.remove());
+      row.querySelector('p').textContent = 'Let the sharks swim in the empty margins of open chats, not only behind new chats. Nothing swims behind messages. Added by t3-sharks.';
+      const control = row.querySelector('[role=switch]');
+      [...control.parentElement.children].forEach((el) => el === control || el.remove());
+      control.setAttribute('aria-label', 'Sharks beside open chats');
+      control.removeAttribute('aria-disabled');
+      control.removeAttribute('data-disabled');
+      const flip = () => {
+        try { localStorage.setItem(CHAT_SETTING, chatOn() ? '0' : '1'); } catch {}
+        setSwitch(control, chatOn());
+        sync();
+      };
+      control.addEventListener('click', flip);
+      control.addEventListener('keydown', (event) => {
+        if (event.key !== ' ' && event.key !== 'Enter') return;
+        event.preventDefault();
+        flip();
+      });
+    }
+    if (row.parentElement !== group || row !== group.lastElementChild) group.append(row);
+    setSwitch(row.querySelector('[role=switch]'), chatOn());
+  };
+
   const readingColumn = (host) => {
     const rects = ['[data-chat-composer-stack]', '[data-timeline-root]'].flatMap((selector) => {
       const rect = host.querySelector(selector)?.getBoundingClientRect();
@@ -115,6 +164,7 @@
   const modeFor = (host) => {
     if (!host) return null;
     if (location.hash.startsWith('#/draft/')) return 'landing';
+    if (!chatOn()) return null;
     const column = readingColumn(host);
     if (!column) return scene?.mode === 'chat' ? 'chat' : null;
     const box = host.getBoundingClientRect();
@@ -132,6 +182,7 @@
   };
 
   const sync = () => {
+    labsRow();
     const host = document.querySelector('[data-chat-canvas=true]');
     const mode = modeFor(host);
     if (mode !== scene?.mode) {
@@ -157,6 +208,6 @@
   };
 
   const interval = setInterval(sync, 400);
-  window.__t3Sharks = { destroy() { clearInterval(interval); teardown(); style.remove(); } };
+  window.__t3Sharks = { destroy() { clearInterval(interval); teardown(); style.remove(); document.querySelector('[data-t3-sharks-setting]')?.remove(); } };
   sync();
 })();
